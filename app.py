@@ -78,7 +78,7 @@ if uploaded:
             "5 - 15 分鐘": int(((dur > 5) & (dur <= 15)).sum()),
             "專業下單":     round(within_15 / total, 4) if total else np.nan,
             "勝算比率":     round(wins / total, 4) if total else np.nan,
-            "同日平倉占比": round(same_day / total, 4) if total else np.nan,
+            "同日平倉數":   int(same_day),
             "公司跟單":     int(g["is_social"].any()),
         })
 
@@ -93,7 +93,7 @@ if uploaded:
     col_order = [
         "賬戶號碼", "客戶名字",
         "0 - 1 分鐘", "1 - 5 分鐘", "5 - 15 分鐘", "專業下單",
-        "交易總額", "交易次數", "同日平倉占比", "獲利次數", "勝算比率", "當天盈虧",
+        "交易總額", "交易次數", "同日平倉數", "獲利次數", "勝算比率", "當天盈虧",
         "幣種", "公司跟單",
     ]
     result = result[col_order]
