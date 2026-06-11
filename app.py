@@ -29,55 +29,68 @@ st.caption("上传 Positions History CSV，自动生成客户统计报表")
 uploaded = st.file_uploader("上传文件（MT5 导出 CSV）", type=["csv", "txt"])
 
 if uploaded:
-    with st.spinner("分析中..."):
-        raw = uploaded.read()
-        df = pd.read_csv(io.BytesIO(raw), encoding="utf-16", sep="\t", low_memory=False)
+    file_mb = len(uploaded.getvalue()) / 1024 / 1024
+    st.info(f"文件已接收：{uploaded.name}（{file_mb:.1f} MB），開始處理...")
 
-        df = df[pd.to_numeric(df["Login"], errors="coerce").notna()].copy()
-        df["Login"] = df["Login"].astype(int)
-        df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce")
-        df["Time"] = pd.to_datetime(df["Time"], format="%Y.%m.%d %H:%M:%S.%f")
-        df["Close Time"] = pd.to_datetime(df["Close Time"], format="%Y.%m.%d %H:%M:%S.%f")
+    progress = st.progress(0, text="讀取文件中...")
+    raw = uploaded.read()
 
-        usc = df["Currency"] == "USC"
-        df.loc[usc, "Profit"] = df.loc[usc, "Profit"] / 100
-        df.loc[usc, "Volume"] = df.loc[usc, "Volume"] / 100
+    progress.progress(15, text="解析數據中...")
+    df = pd.read_csv(io.BytesIO(raw), encoding="utf-16", sep="\t", low_memory=False)
 
-        df["duration_min"] = (df["Close Time"] - df["Time"]).dt.total_seconds() / 60
-        df["open_date"] = df["Time"].dt.date
-        df["close_date"] = df["Close Time"].dt.date
-        df["is_social"] = df["Comment"].fillna("").str.contains("Social", case=False)
+    progress.progress(30, text="清洗數據中...")
+    df = df[pd.to_numeric(df["Login"], errors="coerce").notna()].copy()
+    df["Login"] = df["Login"].astype(int)
+    df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce")
 
-        def agg_login(g):
-            dur = g["duration_min"]
-            total = len(g)
-            wins = int((g["Profit"] > 0).sum())
-            within_15 = (dur <= 15).sum()
-            same_day = (g["open_date"] == g["close_date"]).sum()
-            return pd.Series({
-                "客戶名字":     g["Name"].iloc[0],
-                "幣種":         g["Currency"].iloc[0],
-                "當天盈虧":     round(g["Profit"].sum(), 2),
-                "交易總額":     round(g["Volume"].sum(), 4),
-                "交易次數":     total,
-                "獲利次數":     wins,
-                "0 - 1 分鐘":  int((dur <= 1).sum()),
-                "1 - 5 分鐘":  int(((dur > 1) & (dur <= 5)).sum()),
-                "5 - 15 分鐘": int(((dur > 5) & (dur <= 15)).sum()),
-                "專業下單":     round(within_15 / total, 4) if total else np.nan,
-                "勝算比率":     round(wins / total, 4) if total else np.nan,
-                "同日平倉占比": round(same_day / total, 4) if total else np.nan,
-                "公司跟單":     int(g["is_social"].any()),
-            })
+    progress.progress(45, text="轉換時間欄位...")
+    df["Time"] = pd.to_datetime(df["Time"], format="%Y.%m.%d %H:%M:%S.%f")
+    df["Close Time"] = pd.to_datetime(df["Close Time"], format="%Y.%m.%d %H:%M:%S.%f")
 
-        result = (
-            df.groupby("Login")
-            .apply(agg_login, include_groups=False)
-            .reset_index()
-            .rename(columns={"Login": "賬戶號碼"})
-            .sort_values("當天盈虧", ascending=False)
-        )
+    progress.progress(55, text="換算幣種（USC → USD）...")
+    usc = df["Currency"] == "USC"
+    df.loc[usc, "Profit"] = df.loc[usc, "Profit"] / 100
+    df.loc[usc, "Volume"] = df.loc[usc, "Volume"] / 100
 
+    progress.progress(65, text="計算持倉時長...")
+    df["duration_min"] = (df["Close Time"] - df["Time"]).dt.total_seconds() / 60
+    df["open_date"] = df["Time"].dt.date
+    df["close_date"] = df["Close Time"].dt.date
+    df["is_social"] = df["Comment"].fillna("").str.contains("Social", case=False)
+
+    progress.progress(75, text="按賬戶彙總中（數據量大，稍候）...")
+
+    def agg_login(g):
+        dur = g["duration_min"]
+        total = len(g)
+        wins = int((g["Profit"] > 0).sum())
+        within_15 = (dur <= 15).sum()
+        same_day = (g["open_date"] == g["close_date"]).sum()
+        return pd.Series({
+            "客戶名字":     g["Name"].iloc[0],
+            "幣種":         g["Currency"].iloc[0],
+            "當天盈虧":     round(g["Profit"].sum(), 2),
+            "交易總額":     round(g["Volume"].sum(), 4),
+            "交易次數":     total,
+            "獲利次數":     wins,
+            "0 - 1 分鐘":  int((dur <= 1).sum()),
+            "1 - 5 分鐘":  int(((dur > 1) & (dur <= 5)).sum()),
+            "5 - 15 分鐘": int(((dur > 5) & (dur <= 15)).sum()),
+            "專業下單":     round(within_15 / total, 4) if total else np.nan,
+            "勝算比率":     round(wins / total, 4) if total else np.nan,
+            "同日平倉占比": round(same_day / total, 4) if total else np.nan,
+            "公司跟單":     int(g["is_social"].any()),
+        })
+
+    result = (
+        df.groupby("Login")
+        .apply(agg_login, include_groups=False)
+        .reset_index()
+        .rename(columns={"Login": "賬戶號碼"})
+        .sort_values("當天盈虧", ascending=False)
+    )
+
+    progress.progress(100, text="完成！")
     st.success(f"完成！共 {len(result)} 個賬戶")
     st.dataframe(result, use_container_width=True, hide_index=True)
 
