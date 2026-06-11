@@ -90,6 +90,14 @@ if uploaded:
         .sort_values("當天盈虧", ascending=False)
     )
 
+    col_order = [
+        "賬戶號碼", "客戶名字",
+        "0 - 1 分鐘", "1 - 5 分鐘", "5 - 15 分鐘", "專業下單",
+        "交易總額", "交易次數", "同日平倉占比", "獲利次數", "勝算比率", "當天盈虧",
+        "幣種", "公司跟單",
+    ]
+    result = result[col_order]
+
     progress.progress(100, text="完成！")
     st.success(f"完成！共 {len(result)} 個賬戶")
     st.dataframe(result, use_container_width=True, hide_index=True)
